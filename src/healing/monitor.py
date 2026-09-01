@@ -32,6 +32,39 @@ def _headers(token: str) -> dict:
     }
 
 
+def get_ci_status_for_sha(token: str, repo_name: str, sha: str,
+                          workflow_name: str = "CI Build") -> dict:
+    """
+    Return the conclusion ('success'/'failure'/None) and most recent run id
+    for a given commit SHA on the given workflow, or {'conclusion': None}.
+
+    Used to check whether a CI re-run of the auto-fix PR passed or failed.
+    """
+    owner, repo = repo_name.split("/", 1)
+    api = f"https://api.github.com/repos/{owner}/{repo}"
+    resp = requests.get(
+        f"{api}/actions/runs",
+        headers=_headers(token),
+        params={"head_sha": sha, "status": "completed", "per_page": 5},
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        logger.warning("Could not read CI status for %s: %s", sha, resp.status_code)
+        return {"conclusion": None, "run_id": None}
+
+    for run in resp.json().get("workflow_runs", []):
+        name = (run.get("name") or "")
+        if name == workflow_name or run.get("display_title", "").startswith("CI"):
+            return {
+                "conclusion": run.get("conclusion"),
+                "run_id": run.get("id"),
+                "status": run.get("status"),
+            }
+
+    # No matching workflow run found yet
+    return {"conclusion": None, "run_id": None}
+
+
 def gather_failed_run(token: str, repo_name: str, run_id: int) -> Optional[FailedRun]:
     """
     Fetch a failed workflow run, its console logs, job failures,

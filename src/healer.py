@@ -2,13 +2,16 @@
 Self-Healing Agent — GitHub Actions CI Monitor + Copilot Fixer
 
 Detects failed CI runs via GitHub webhooks (workflow_run event), gathers
-console logs and changed files, asks Copilot to fix them, and raises a PR.
+console logs and changed files, asks Copilot to fix them, opens a PR, then
+CLOSES THE LOOP: it re-checks the CI re-run and, if it still fails, re-fixes
+until CI passes or MAX_CI_ITERATIONS is reached.
 
 Architecture:
   1. MONITOR  (monitor.py)   — fetch failed run info, console logs, changed files
   2. DETECT   (detect.py)    — validate changed files locally
   3. FIX      (copilot_fixer.py) — ask Copilot to repair broken files
   4. SHIP     (pull_request.py) — branch, commit, single PR
+  5. ITERATE  (pull_request.py) — re-check CI; re-fix until pass or max attempts
 
 Usage:
   Set environment variables:

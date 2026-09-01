@@ -6,4 +6,5 @@
     healing.detect          STEP 1+2 syntax / pyflakes / runtime checks
     healing.copilot_fixer   STEP 3+4 Copilot prompt + fix verification
     healing.pull_request    STEP 5   branch, commit, single PR
+                                  + iterative close-the-loop (re-check CI)
 """

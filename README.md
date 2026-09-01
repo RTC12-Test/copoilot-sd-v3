@@ -70,7 +70,15 @@ Because the reusable checks run against the **calling repo's checkout**, the chi
 
 1. **Monitor** `workflow_run`: triggers when "CI Build" completes.
 2. **Ignore passes**: `if: workflow_run.conclusion == 'failure'` skips green runs.
-3. **On failure**: `monitor.gather_failed_run()` gathers the run console logs + changed files; `healer.py` fixes broken `client_code/*.py` and `infra/terraform/*.tf|yaml` via Copilot; `pull_request.py` opens a single PR.
+3. **On failure**: `monitor.gather_failed_run()` gathers the run console logs + changed files.
+4. **Fix + PR**: `healer.py` fixes broken `client_code/*.py` and `infra/terraform/*.tf|yaml` via Copilot; `pull_request.py` opens a single PR.
+5. **Close the loop**: the agent re-checks the CI re-run; if it still fails, it re-analyzes the new failure and updates the **same** PR branch, repeating until CI passes or `MAX_CI_ITERATIONS` (default `3`) is reached. Human review/merge is still required.
+
+```
+MISS → gather → fix → PR → wait for CI re-run
+                              ├─ success → done
+                              └─ failure → re-fix → update same PR → wait again (xN)
+```
 
 ## Master Repo Setup / Secrets
 

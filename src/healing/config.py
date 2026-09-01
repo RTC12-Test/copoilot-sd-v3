@@ -23,6 +23,11 @@ MAX_FIX_ATTEMPTS = 2             # tries per file before giving up on it
 MONITOR_LOG_MAX_CHARS = 8000     # max CI console log chars sent to Copilot
 HEALABLE_EXTENSIONS = {".py", ".tf", ".yaml", ".yml"}  # all file types the agent handles
 
+# Close-the-loop iteration settings
+MAX_CI_ITERATIONS = 3            # how many fix→re-check cycles before giving up
+CI_RECHECK_SECONDS = 30          # how often to poll the CI run status
+CI_CHECK_TIMEOUT_SECONDS = 1800  # max seconds to wait for a CI re-run to finish
+
 
 def is_healable_file(path: str) -> bool:
     """

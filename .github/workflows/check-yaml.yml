@@ -1,0 +1,72 @@
+name: Reusable Check YAML
+
+on:
+  workflow_call:
+
+jobs:
+  yaml-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: List changed YAML files
+        run: |
+          git diff --name-only --diff-filter=ACMR \
+            "origin/${{ github.base_ref }}...HEAD" \
+            -- infra/terraform \
+            | grep '\.yaml$' > changed_yaml_files.txt || true
+          while read -r f; do [ -f "$f" ] && echo "$f"; done < changed_yaml_files.txt > tmp.txt
+          mv tmp.txt changed_yaml_files.txt
+          echo "Changed .yaml files in this PR:"
+          cat changed_yaml_files.txt
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate YAML files
+        run: |
+          if [ ! -s changed_yaml_files.txt ]; then
+            echo "No .yaml changes under infra/terraform/ — nothing to check."
+            exit 0
+          fi
+
+          echo "=== YAML syntax + uniqueness check ==="
+          pip install pyyaml -q
+          python -c "
+          import yaml, sys
+
+          class UniqueKeyLoader(yaml.SafeLoader):
+              pass
+
+          errors = []
+
+          def check_unique_keys(loader, node):
+              keys = []
+              for key_node, _ in node.value:
+                  key = loader.construct_object(key_node)
+                  if key in keys:
+                      print(f'  duplicate key: {key} (line {key_node.start_mark.line + 1})')
+                      errors.append(True)
+                  keys.append(key)
+              return loader.construct_mapping(node)
+
+          UniqueKeyLoader.add_constructor(
+              yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, check_unique_keys)
+
+          for f in open('changed_yaml_files.txt'):
+              f = f.strip()
+              if not f: continue
+              try:
+                  yaml.load(open(f), Loader=UniqueKeyLoader)
+                  print(f'  OK   {f}')
+              except yaml.YAMLError as e:
+                  line = getattr(e, 'problem_mark', None)
+                  ln = line.line + 1 if line else '?'
+                  print(f'  FAIL {f}:{ln} — {e}')
+                  errors.append(True)
+          if errors:
+              sys.exit(1)
+          "

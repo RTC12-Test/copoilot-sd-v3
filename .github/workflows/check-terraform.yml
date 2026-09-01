@@ -1,0 +1,32 @@
+name: Reusable Check Terraform
+
+on:
+  workflow_call:
+
+jobs:
+  terraform-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: List changed infra/terraform/*.tf files
+        run: |
+          git diff --name-only --diff-filter=ACMR \
+            "origin/${{ github.base_ref }}...HEAD" \
+            -- infra/terraform \
+            | grep '\.tf$' > changed_tf_files.txt || true
+          while read -r f; do [ -f "$f" ] && echo "$f"; done < changed_tf_files.txt > tmp.txt
+          mv tmp.txt changed_tf_files.txt
+          echo "Changed .tf files in this PR:"
+          cat changed_tf_files.txt
+
+      - name: Install Terraform CLI
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.8.2"
+
+      - name: Terraform validate via Makefile
+        if: hashFiles('infra/terraform/providers.tf') != ''
+        run: make ENV=dev terraform/validate

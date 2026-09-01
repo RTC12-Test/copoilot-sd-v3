@@ -1,84 +1,77 @@
-# Self-Healing CI Engine (Reusable)
+# Self-Healing CI Master Repo
 
-A central **reusable CI engine + self-heal agent**. This repo defines the CI check workflows and the healer that other repos (holding `client_code/` and `infra/terraform/`) use.
+This is the **master repo** — it holds the **logic** (reusable CI workflows + the self-heal agent source). Child repos hold the **actual application/infrastructure code** (`client_code/` + `infra/terraform/`) and **call** this repo's reusable workflows and healer.
 
-## How It Works
+## Architecture
 
 ```
-TARGET REPO (client_code/ + infra/terraform/)
- ├─ ci.yml                  → calls reusable checks FROM THIS REPO
- │     └─ check-python.yml  (client_code/*.py)
- │     └─ check-terraform.yml (infra/terraform/*.tf)
- │     └─ check-yaml.yml    (infra/terraform/*.yaml)
- │           ↓  [CI FAILS]
- └─ self-heal.yml           → workflow_run on "CI Build" failure
-       └─ clones this repo's healer → fixes client_code/ + infra/terraform/
-            → opens a PR
+copoilot-sd-v3  (MASTER — logic only)
+ ├─ .github/workflows/check-*.yml   reusable checks (workflow_call)
+ ├─ src/                            the healer agent (Python)
+ └─ Makefile, requirements.txt      healer dependencies
+        ▲  referenced via `uses:` / clone
+        │
+child_repo  (holds the CODE)
+ ├─ client_code/*.py                Python app code
+ ├─ infra/terraform/*.tf,.yaml      Terraform + YAML infra
+ ├─ .github/workflows/ci.yml        calls master's check-*.yml via `uses:`
+ └─ .github/workflows/self-heal.yml clones master's src/, runs healer
 ```
 
-- **This repo** = the engine. Holds the reusable workflows + the healer source (`src/`).
-- **Target repo** = holds the actual `client_code/*.py` and `infra/terraform/*.{tf,yaml}` code and *calls* the CI jobs from here.
-- Only **changed** files are scanned, fixed, and committed. One PR per failed run.
+- **Master** carries no application code — it only *provides* the reusable checks and the healer.
+- **Child** carries `client_code/` + `infra/terraform/` and *consumes* the master's logic.
 
-## Files in This Repo
+## What This (Master) Repo Contains
 
-| File | Purpose |
+| Path | Purpose |
 |------|---------|
 | `.github/workflows/check-python.yml` | Reusable (`workflow_call`) Python check — `client_code/*.py` |
 | `.github/workflows/check-terraform.yml` | Reusable Terraform check — `infra/terraform/*.tf` |
 | `.github/workflows/check-yaml.yml` | Reusable YAML check — `infra/terraform/*.yaml` |
-| `.github/workflows/ci.yml` | **Template** for the target repo's CI (calls the above via `uses:`) |
-| `.github/workflows/self-heal.yml` | **Template** for the target repo's self-heal (runs `src/healer.py`) |
-| `src/` | The healer agent (Python) |
+| `src/healer.py` + `src/healing/` | The self-heal agent (monitor → detect → fix → PR) |
+| `Makefile`, `requirements.txt` | Healer shell + Python deps |
 
-## Setup
+## How a Child Repo Uses This Repo
 
-### Step 1 — This (engine) repo
-
-No action required beyond keeping `src/` and the reusable workflows on a branch (e.g. `main`) that target repos reference.
-
-### Step 2 — Each target repo (the one with client_code + infra)
-
-Copy these two files into the target repo's `.github/workflows/`:
-
-1. **`ci.yml`** — your target repo's CI. Make sure the `uses:` lines point at the engine repo + branch:
-   ```yaml
-   uses: RTC12-Test/copoilot-sd-v3/.github/workflows/check-python.yml@main
-   uses: RTC12-Test/copoilot-sd-v3/.github/workflows/check-terraform.yml@main
-   uses: RTC12-Test/copoilot-sd-v3/.github/workflows/check-yaml.yml@main
-   ```
-
-2. **`self-heal.yml`** — add secrets to the target repo:
-   | Secret | Description |
-   |--------|-------------|
-   | `HEALER_TOKEN` | PAT with `repo`, `workflow`, `pull-requests: write` (used for the fixing PR) |
-   | `COPILOT_OAUTH_TOKEN` | Copilot OAuth token (`gho_...`) for the Copilot SDK |
-   | `AGENT_REPO` (optional) | Defaults to `RTC12-Test/copoilot-sd-v3`; set if healer source moves |
-
-### Flow
-
-1. Developer opens a PR touching `client_code/` or `infra/terraform/`.
-2. `ci.yml` runs the reusable checks from this repo.
-3. If a check fails, `self-heal.yml` triggers (`workflow_run`).
-4. It clones `src/` from this repo, finds the broken files (only `.py` in `client_code/`, `.tf`/`.yaml` in `infra/terraform/`), asks Copilot for fixes, verifies them, and opens a PR titled `[Self-Heal] Fix errors in N file(s)`.
-
-## Local Run
-
-```bash
-pip install -r requirements.txt
-export GITHUB_TOKEN=ghp_...   GH_TOKEN=gho_...   GITHUB_REPO=owner/repo CHANGE_BASE=origin/main
-python src/healer.py
+### 1. CI (child's `ci.yml`)
+```yaml
+jobs:
+  yaml:
+    uses: RTC12-Test/copoilot-sd-v3/.github/workflows/check-yaml.yml@main
+  terraform:
+    needs: yaml
+    uses: RTC12-Test/copoilot-sd-v3/.github/workflows/check-terraform.yml@main
+  python:
+    needs: terraform
+    uses: RTC12-Test/copoilot-sd-v3/.github/workflows/check-python.yml@main
 ```
 
-## Healer Scope (safety fence)
+Because the reusable checks run against the **calling repo's checkout**, the child repo must hold the code it is validating.
 
-`src/healing/config.py` defines exactly what the healer may touch:
-
-```python
-SCAN_ROOTS = {
-    "client_code":     {".py"},
-    "infra/terraform": {".tf", ".yaml"},
-}
+### 2. Self-heal (child's `self-heal.yml`)
+```yaml
+- name: Fetch healer source from master
+  run: |
+    AGENT_REPO="${{ secrets.AGENT_REPO || 'RTC12-Test/copoilot-sd-v3' }}"
+    git clone --depth 1 "https://github.com/${AGENT_REPO}.git" /tmp/self-healer
+    mkdir -p ./src
+    cp -r /tmp/self-healer/src/healing ./src/healing
+    cp /tmp/self-healer/src/healer.py ./src/healer.py
+- name: Run self-healer
+  env:
+    GITHUB_TOKEN: ${{ secrets.HEALER_TOKEN }}
+    GH_TOKEN: ${{ secrets.COPILOT_OAUTH_TOKEN }}
+    GITHUB_REPO: ${{ github.repository }}
+    FAILED_RUN_ID: ${{ github.event.workflow_run.id }}
+  run: python src/healer.py
 ```
 
-Anything outside these is never read, fixed, or committed.
+## Healer Flow (matches your requirements)
+
+1. **Monitor** `workflow_run`: triggers when "CI Build" completes.
+2. **Ignore passes**: `if: workflow_run.conclusion == 'failure'` skips green runs.
+3. **On failure**: `monitor.gather_failed_run()` gathers the run console logs + changed files; `healer.py` fixes broken `client_code/*.py` and `infra/terraform/*.tf|yaml` via Copilot; `pull_request.py` opens a single PR.
+
+## Master Repo Setup / Secrets
+
+The master only needs its reusable workflows + `src/` published on the branch children reference (e.g. `main`). Each **child** repo needs `HEALER_TOKEN`, `COPILOT_OAUTH_TOKEN`, and optionally `AGENT_REPO`.

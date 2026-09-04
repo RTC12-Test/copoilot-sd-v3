@@ -55,7 +55,8 @@ is a config toggle (recompile when switching), not automatic per-run.
 - **Switch to Claude:** change `engine: copilot` → `engine: claude`, add an
   `ANTHROPIC_API_KEY` secret, recompile. Also, to go back, remove/change the engine
   and recompile.
-- Per-run manual choice is available via the `provider` `workflow_dispatch` input.
+- There is **no per-run engine switch** — engine is bound at compile time. Manual
+  `workflow_dispatch` reruns use whatever engine the committed `.lock.yml` has.
 
 ## PR label convention (`ci_*`)
 
@@ -87,12 +88,17 @@ approval before merge, which is exactly the desired flow.
 
 ## Setup on the central repo (`copilot-central`)
 
-### Variables (repository variables — read by the compiled workflow as `env.*`)
+### Variables (repository variables — read by the compiled workflow as `${{ vars.* }}`)
 | Name | Value |
 |---|---|
 | `MONITOR_ORG` | Your GitHub org name |
 | `MONITOR_REPOS` | Optional comma-separated repos (empty = scan whole org) |
 | `MAX_FIXES` | Optional max PRs per run (default 5) |
+
+These repo-level variables are the single configuration point for both scheduled
+and manual runs. (An earlier revision exposed `workflow_dispatch` inputs for
+`org`/`repos`/`provider`/`max-fixes`; they were removed because an engine cannot be
+switched per-run and the inputs duplicated `vars.*`.)
 
 ### Secrets / permissions
 | Name | Purpose |

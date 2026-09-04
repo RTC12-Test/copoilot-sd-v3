@@ -1,35 +1,17 @@
 ---
 name: Org CI Fixer
-description: Safety-net scan. Monitors CI failures across all repos that carry a .ci-fixer.yml marker and opens fix PRs labelled ci_<language>. Backs up the instant dispatch workflow (org-ci-fixer.dispatch) if a webhook is missed. Runs every 5 minutes (GitHub schedule minimum). Engine is Copilot by default; switch to Claude by editing the engine field and adding ANTHROPIC_API_KEY. Central repo stays the single control point; child repos are passive.
+description: Safety-net scan. Monitors CI failures across all repos that carry a .ci-fixer.yml marker and opens fix PRs labelled ci_<language>. Runs every 5 minutes (GitHub schedule minimum). Engine is Copilot by default; switch to Claude by editing the engine field and adding ANTHROPIC_API_KEY. Central repo stays the single control point; child repos are passive.
 on:
   schedule: every 5 minutes
-  workflow_dispatch:
-    inputs:
-      org:
-        description: GitHub org to scan
-        required: false
-      repos:
-        description: Comma-separated repos to scan (overrides org scan)
-        required: false
-      provider:
-        description: AI engine override (for this manual run)
-        required: false
-        type: choice
-        options: [copilot, claude]
-        default: copilot
-      max-fixes:
-        description: Max repos to fix this run
-        required: false
-        type: number
-        default: 5
+  workflow_dispatch: {}
 
 # ENGINE SELECTION (choose Copilot or Claude):
-#   - Copilot (default): keep `engine: copilot` below. Auth = COPILOT_GITHUB_TOKEN
-#     secret OR `permissions.copilot-requests: write` (org centralized Copilot billing).
+#   - Copilot (default): keep `engine: copilot` below. Auth = `copilot-requests: write`
+#     permission (org centralized Copilot billing, via the built-in Actions token) OR a
+#     COPILOT_GITHUB_TOKEN secret. Both paths are handled; the permission is preferred.
 #   - Claude: change `engine: copilot` to `engine: claude`, add an ANTHROPIC_API_KEY
 #     secret, and re-run `gh aw compile`. The two engines are bound at compile time,
-#     so picking Claude means recompiling once. Per-run manual choice is available
-#     via the `provider` workflow_dispatch input above.
+#     so picking Claude means recompiling once.
 engine: copilot
 
 permissions:
@@ -37,11 +19,12 @@ permissions:
   pull-requests: read
   issues: read
   actions: read
+  copilot-requests: write
 
 env:
-  MONITOR_ORG: ${MONITOR_ORG}
-  MONITOR_REPOS: ${MONITOR_REPOS}
-  MAX_FIXES: ${MAX_FIXES}
+  MONITOR_ORG: ${{ vars.MONITOR_ORG }}
+  MONITOR_REPOS: ${{ vars.MONITOR_REPOS }}
+  MAX_FIXES: ${{ vars.MAX_FIXES }}
 
 network:
   allowed:

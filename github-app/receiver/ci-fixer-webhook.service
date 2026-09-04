@@ -1,0 +1,31 @@
+# ci-fixer-webhook systemd unit (non-container option).
+#
+# Install:
+#   sudo mkdir -p /opt/ci-fixer-webhook
+#   sudo cp server.py /opt/ci-fixer-webhook/
+#   sudo cp ci-fixer-webhook.service /etc/systemd/system/
+#
+# Create an env file with the required vars, then:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now ci-fixer-webhook
+#
+# Put a reverse proxy (nginx/caddy) in front on 443 that proxies /hook to
+# 127.0.0.1:8080.
+
+[Unit]
+Description=ci-fixer-webhook receiver (forwards CI failures to central repo dispatch)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ci-fixer-webhook
+ExecStart=/usr/bin/python3 /opt/ci-fixer-webhook/server.py
+EnvironmentFile=/opt/ci-fixer-webhook/ci-fixer-webhook.env
+Restart=always
+RestartSec=3
+# least-privilege user (create: sudo useradd -r -s /usr/sbin/nologin ci-fixer)
+User=ci-fixer
+Group=ci-fixer
+
+[Install]
+WantedBy=multi-user.target

@@ -7,3 +7,8 @@ terraform.tfstate*
 .DS_Store
 .venv/
 venv/
+/tmp/
+*.egg-info/
+dist/
+build/
+.env

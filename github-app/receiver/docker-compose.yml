@@ -1,0 +1,41 @@
+# ci-fixer-webhook — self-hosted on the same host as your GitHub Actions
+# self-hosted runner (or any reachable host/NAT with a reverse proxy).
+#
+# Runs the receiver behind Caddy, which automatically provisions HTTPS.
+#
+#   docker compose up -d
+#
+# Then set the GitHub App webhook URL to:  https://<your-domain>/hook
+# (Caddy auto-certs via Let's Encrypt once DNS points at this host.)
+
+services:
+  receiver:
+    build: .
+    restart: unless-stopped
+    environment:
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?set WEBHOOK_SECRET}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:?set GITHUB_TOKEN}
+      CENTRAL_OWNER: ${CENTRAL_OWNER:?set CENTRAL_OWNER}
+      CENTRAL_REPO: ${CENTRAL_REPO:-copilot-central}
+      DISPATCH_EVENT_TYPE: ${DISPATCH_EVENT_TYPE:-ci-fixer}
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN e.g. webhooks.example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - receiver
+
+volumes:
+  caddy_data:
+  caddy_config:

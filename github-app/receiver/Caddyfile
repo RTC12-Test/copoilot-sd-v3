@@ -1,8 +1,0 @@
-{$PUBLIC_DOMAIN} {
-	encode gzip
-	reverse_proxy receiver:8080
-	log {
-		output stdout
-		format console
-	}
-}

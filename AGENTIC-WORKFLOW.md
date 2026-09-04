@@ -4,10 +4,6 @@ The **decided solution**: a central-repo **GitHub Agentic Workflow** that scans 
 org on a schedule, detects failing child CI jobs, fixes them, and opens labelled PRs.
 Everything lives inside GitHub — **no self-hosted runner, no cloud connector**.
 
-> Note: `INSTANT-CI-FIXER.md` documents an alternative GitHub-App + webhook design
-> (sub-minute). You chose the schedule method for simplicity, so this workflow is
-> the primary path. The instant files are kept for reference; remove them if unused.
-
 ## What it does
 
 1. Every **5 minutes** (the GitHub schedule minimum) on a schedule, the agent scans
@@ -34,7 +30,6 @@ Everything lives inside GitHub — **no self-hosted runner, no cloud connector**
   GitHub allows).
 - Because schedule alone is coarse, a manual **`workflow_dispatch`** is also exposed
   for on-demand runs (useful for testing or immediate fixes).
-
 ## BEFORE you deploy — the `.lock.yml` requirement
 
 GitHub runs the **compiled** `.lock.yml`, not the `.md` directly. You must compile:
@@ -135,5 +130,3 @@ ignore_paths:
   repo; tighten `allowed-repos` to your actual org repos in production.
 - PRs created do not trigger CI by default; the
   `github-token-for-extra-empty-commit: app` setting makes CI fire on the new PR.
-- The GitHub App / webhook files (`github-app/`) and `INSTANT-CI-FIXER.md` are the
-  optional instant path. Remove them if you want to avoid the extra machinery.
